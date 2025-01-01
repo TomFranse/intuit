@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import * as Tone from 'tone';
 
 interface ToneContextType {
   isInitialized: boolean;
+  initializeAudio: () => Promise<void>;
 }
 
 const ToneContext = createContext<ToneContextType | undefined>(undefined);
@@ -10,28 +11,20 @@ const ToneContext = createContext<ToneContextType | undefined>(undefined);
 export const ToneProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Auto-initialize on mount
-  useEffect(() => {
-    const setupAudio = async () => {
+  const initializeAudio = async () => {
+    if (!isInitialized) {
       try {
         await Tone.start();
-        await Tone.getContext().resume();
+        Tone.Transport.start();
         setIsInitialized(true);
       } catch (error) {
         console.error("Error initializing Tone.js:", error);
       }
-    };
-
-    setupAudio();
-
-    return () => {
-      Tone.Transport.stop();
-      Tone.Transport.cancel();
-    };
-  }, []);
+    }
+  };
 
   return (
-    <ToneContext.Provider value={{ isInitialized }}>
+    <ToneContext.Provider value={{ isInitialized, initializeAudio }}>
       {children}
     </ToneContext.Provider>
   );

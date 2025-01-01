@@ -14,35 +14,34 @@ interface OscillatorUnit {
   gainNode: Tone.Gain;
 }
 
+const degreesToRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
 const ToneCreator = () => {
-  const { isInitialized } = useTone();
+  const { isInitialized, initializeAudio } = useTone();
   const [oscillatorUnits, setOscillatorUnits] = useState<OscillatorUnit[]>([]);
+  const [testResult, setTestResult] = useState<string>("");
 
   // Initialize oscillators after context is ready
   useEffect(() => {
     if (!isInitialized) return;
 
     // Create oscillator units with gain nodes
-    const units = states.map(() => {
+    const units = states.map((state) => {
       const gainNode = new Tone.Gain(0).toDestination();
-      const oscillator = new Tone.Oscillator({ type: "sine" })
-        .connect(gainNode)
-        .sync()
-        .start();
+      const oscillator = new Tone.Oscillator({
+        type: "sine",
+        frequency: state.frequency,
+      })
+      .connect(gainNode);
+
+      // Set phase directly (Tone.js handles conversion internally)
+      oscillator.phase = state.phase;
+      oscillator.start();
 
       return { oscillator, gainNode };
     });
 
-    // Set initial parameters
-    units.forEach((unit, i) => {
-      unit.oscillator.frequency.value = states[i].frequency;
-      unit.oscillator.phase = states[i].phase;
-    });
-
     setOscillatorUnits(units);
-
-    // Start transport after oscillators are ready
-    Tone.Transport.start();
 
     return () => {
       units.forEach(unit => {
@@ -85,12 +84,12 @@ const ToneCreator = () => {
           unit.oscillator.frequency.value = updates.frequency!;
         }
         if ('amplitude' in updates) {
-          // Only update gain if oscillator is playing
           if (state.isPlaying) {
             unit.gainNode.gain.value = updates.amplitude!;
           }
         }
         if ('phase' in updates) {
+          // Set phase directly - Tone.js will handle the conversion and waveform update
           unit.oscillator.phase = updates.phase!;
         }
       } catch (error) {
@@ -119,11 +118,93 @@ const ToneCreator = () => {
     }
   }, [oscillatorUnits, states]);
 
+  // Add test function
+  const testPhase = useCallback(async () => {
+    if (!oscillatorUnits[0] || !oscillatorUnits[1]) return;
+
+    const meter = new Tone.Meter({
+      smoothing: 0.9,
+    });
+    const combiner = new Tone.Gain().connect(meter);
+    
+    try {
+      // Stop any playing oscillators
+      states.forEach((state, index) => {
+        if (state.isPlaying) {
+          togglePlay(index);
+        }
+      });
+
+      // Connect to meter
+      oscillatorUnits.forEach(unit => {
+        unit.gainNode.disconnect();
+        unit.gainNode.connect(combiner);
+      });
+
+      // Set phases (this will recreate oscillators)
+      await updateOscillator(0, { frequency: 440, amplitude: 0.5, phase: 0 });
+      await updateOscillator(1, { frequency: 440, amplitude: 0.5, phase: 180 });
+
+      // Start playback
+      togglePlay(0);
+      togglePlay(1);
+
+      // Wait for stable reading
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const level = meter.getValue() as number;
+      setTestResult(`Combined output level: ${level} dB`);
+      console.log("Phase test result:", level);
+
+      if (level < -50) {
+        setTestResult("Phase cancellation working! Output level: " + level + " dB");
+      } else {
+        setTestResult("Phase cancellation not complete. Output level: " + level + " dB");
+      }
+
+      // Cleanup
+      oscillatorUnits.forEach(unit => {
+        unit.gainNode.disconnect();
+        unit.gainNode.toDestination();
+      });
+
+      togglePlay(0);
+      togglePlay(1);
+
+    } catch (err) {
+      console.error("Error during phase test:", err);
+      setTestResult("Test failed: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      meter.dispose();
+      combiner.dispose();
+    }
+  }, [oscillatorUnits, updateOscillator, togglePlay, states]);
+
+  // Add test button to UI
+  const renderTestButton = () => (
+    <div className="col-span-full text-center mt-4">
+      <button
+        onClick={testPhase}
+        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+      >
+        Test Phase Cancellation
+      </button>
+      {testResult && (
+        <div className="mt-2 text-sm font-mono">{testResult}</div>
+      )}
+    </div>
+  );
+
   return (
     <div className="p-6">
       {!isInitialized ? (
         <div className="text-center p-8">
-          <p>Initializing audio...</p>
+          <button
+            onClick={initializeAudio}
+            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
+          >
+            Enable Audio
+          </button>
         </div>
       ) : (
         <>
@@ -224,6 +305,7 @@ const ToneCreator = () => {
               </div>
             ))}
           </div>
+          {renderTestButton()}
         </>
       )}
     </div>

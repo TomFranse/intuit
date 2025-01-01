@@ -1,3 +1,5 @@
+Example uses: https://github.com/Tonejs/Tone.js/blob/cf73c22874ddbaf361ca62a8caf0edea155ef50a/Tone/core/util/Timeline.ts
+
 Home
 Yotam Mann edited this page on Sep 16, 2020 · 8 revisions
 Tone.js Wiki
