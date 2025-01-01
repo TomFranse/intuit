@@ -1,42 +1,69 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Tone from 'tone';
 import { useTone } from '../../contexts/ToneContext';
+import { OmniOscillatorType, ToneOscillatorType } from 'tone/build/esm/source/oscillator/OscillatorInterface';
 
 interface OscillatorState {
   isPlaying: boolean;
   frequency: number;
   amplitude: number;
   phase: number;
+  type: ToneOscillatorType;
+  partialCount?: number;
+  harmonicity?: number;
 }
 
 interface OscillatorUnit {
-  oscillator: Tone.Oscillator;
+  oscillator: Tone.OmniOscillator<any>;
   gainNode: Tone.Gain;
 }
-
-const degreesToRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
 const ToneCreator = () => {
   const { isInitialized, initializeAudio } = useTone();
   const [oscillatorUnits, setOscillatorUnits] = useState<OscillatorUnit[]>([]);
   const [testResult, setTestResult] = useState<string>("");
 
+  const [states, setStates] = useState<OscillatorState[]>([
+    {
+      isPlaying: false,
+      frequency: 440,
+      amplitude: 0.5,
+      phase: 0,
+      type: "sine",
+      partialCount: 0,
+      harmonicity: 1,
+    },
+    {
+      isPlaying: false,
+      frequency: 660,
+      amplitude: 0.5,
+      phase: 0,
+      type: "sine",
+      partialCount: 0,
+      harmonicity: 1,
+    },
+  ]);
+
   // Initialize oscillators after context is ready
   useEffect(() => {
     if (!isInitialized) return;
 
+    // Ensure Transport is started
+    if (Tone.Transport.state !== 'started') {
+      Tone.Transport.start();
+    }
+
     // Create oscillator units with gain nodes
     const units = states.map((state) => {
       const gainNode = new Tone.Gain(0).toDestination();
-      const oscillator = new Tone.Oscillator({
-        type: "sine",
-        frequency: state.frequency,
-      })
-      .connect(gainNode);
+      // Create oscillator with frequency and type first
+      const oscillator = new Tone.OmniOscillator(state.frequency, state.type as OmniOscillatorType)
+        .connect(gainNode)
+        .sync() // Sync to Transport's timeline
+        .start("+0.1"); // Small delay to ensure sync is established
 
-      // Set phase directly (Tone.js handles conversion internally)
+      // Set phase after sync
       oscillator.phase = state.phase;
-      oscillator.start();
 
       return { oscillator, gainNode };
     });
@@ -44,6 +71,8 @@ const ToneCreator = () => {
     setOscillatorUnits(units);
 
     return () => {
+      // Stop Transport if no other oscillators are using it
+      Tone.Transport.stop();
       units.forEach(unit => {
         try {
           unit.gainNode.dispose();
@@ -54,21 +83,6 @@ const ToneCreator = () => {
       });
     };
   }, [isInitialized]);
-
-  const [states, setStates] = useState<OscillatorState[]>([
-    {
-      isPlaying: false,
-      frequency: 440,
-      amplitude: 0.5,
-      phase: 0,
-    },
-    {
-      isPlaying: false,
-      frequency: 660,
-      amplitude: 0.5,
-      phase: 0,
-    },
-  ]);
 
   const updateOscillator = useCallback((index: number, updates: Partial<OscillatorState>) => {
     if (!oscillatorUnits[index]) return;
@@ -89,8 +103,20 @@ const ToneCreator = () => {
           }
         }
         if ('phase' in updates) {
-          // Set phase directly - Tone.js will handle the conversion and waveform update
           unit.oscillator.phase = updates.phase!;
+        }
+        if ('type' in updates) {
+          unit.oscillator.type = updates.type! as OmniOscillatorType;
+        }
+        if ('partialCount' in updates && updates.partialCount !== undefined) {
+          if ('partialCount' in unit.oscillator) {
+            unit.oscillator.partialCount = updates.partialCount;
+          }
+        }
+        if ('harmonicity' in updates && updates.harmonicity !== undefined) {
+          if ('harmonicity' in unit.oscillator && unit.oscillator.harmonicity) {
+            unit.oscillator.harmonicity.value = updates.harmonicity;
+          }
         }
       } catch (error) {
         console.error("Error updating oscillator:", error);
@@ -294,6 +320,53 @@ const ToneCreator = () => {
                       </div>
                     </div>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Oscillator Type
+                    </label>
+                    <select
+                      value={state.type}
+                      onChange={(e) => updateOscillator(index, { type: e.target.value as ToneOscillatorType })}
+                      className="w-full px-2 py-1 border rounded"
+                    >
+                      <option value="sine">Sine</option>
+                      <option value="square">Square</option>
+                      <option value="triangle">Triangle</option>
+                      <option value="sawtooth">Sawtooth</option>
+                      <option value="fmsine">FM Sine</option>
+                      <option value="amsine">AM Sine</option>
+                      <option value="fatsine">Fat Sine</option>
+                    </select>
+                  </div>
+                  
+                  {(state.type.includes('fm') || state.type.includes('am')) && (
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Harmonicity
+                      </label>
+                      <div className="flex gap-4 items-center">
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={state.harmonicity}
+                          onChange={(e) => updateOscillator(index, { harmonicity: Number(e.target.value) })}
+                          className="flex-1"
+                        />
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={state.harmonicity}
+                          onChange={(e) => updateOscillator(index, { harmonicity: Number(e.target.value) })}
+                          className="w-20 px-2 py-1 border rounded"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={() => togglePlay(index)}
