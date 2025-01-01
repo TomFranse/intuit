@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Tone from 'tone';
+import { useTone } from '../../contexts/ToneContext';
 
 interface OscillatorState {
   isPlaying: boolean;
@@ -8,12 +9,52 @@ interface OscillatorState {
   phase: number;
 }
 
+interface OscillatorUnit {
+  oscillator: Tone.Oscillator;
+  gainNode: Tone.Gain;
+}
+
 const ToneCreator = () => {
-  // Track if context is initialized
-  const [isContextInitialized, setIsContextInitialized] = useState(false);
-  
-  // Separate oscillator instances from React state
-  const [oscillatorNodes, setOscillatorNodes] = useState<Tone.Oscillator[]>([]);
+  const { isInitialized } = useTone();
+  const [oscillatorUnits, setOscillatorUnits] = useState<OscillatorUnit[]>([]);
+
+  // Initialize oscillators after context is ready
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Create oscillator units with gain nodes
+    const units = states.map(() => {
+      const gainNode = new Tone.Gain(0).toDestination();
+      const oscillator = new Tone.Oscillator({ type: "sine" })
+        .connect(gainNode)
+        .sync()
+        .start();
+
+      return { oscillator, gainNode };
+    });
+
+    // Set initial parameters
+    units.forEach((unit, i) => {
+      unit.oscillator.frequency.value = states[i].frequency;
+      unit.oscillator.phase = states[i].phase;
+    });
+
+    setOscillatorUnits(units);
+
+    // Start transport after oscillators are ready
+    Tone.Transport.start();
+
+    return () => {
+      units.forEach(unit => {
+        try {
+          unit.gainNode.dispose();
+          unit.oscillator.dispose();
+        } catch (error) {
+          console.error("Error cleaning up oscillator unit:", error);
+        }
+      });
+    };
+  }, [isInitialized]);
 
   const [states, setStates] = useState<OscillatorState[]>([
     {
@@ -30,82 +71,27 @@ const ToneCreator = () => {
     },
   ]);
 
-  // Initialize oscillators after context is ready
-  useEffect(() => {
-    if (!isContextInitialized) return;
-
-    const nodes = [
-      new Tone.Oscillator({ type: "sine" }).toDestination(),
-      new Tone.Oscillator({ type: "sine" }).toDestination()
-    ];
-
-    // Set initial parameters
-    nodes.forEach((osc, i) => {
-      osc.frequency.value = states[i].frequency;
-      osc.volume.value = Tone.gainToDb(states[i].amplitude);
-      osc.phase = states[i].phase;
-    });
-
-    setOscillatorNodes(nodes);
-
-    // Cleanup
-    return () => {
-      nodes.forEach(osc => {
-        try {
-          if (osc.state === "started") {
-            osc.stop();
-          }
-          osc.dispose();
-        } catch (error) {
-          console.error("Error cleaning up oscillator:", error);
-        }
-      });
-    };
-  }, [isContextInitialized]);
-
-  // Initialize context on first user interaction
-  const initializeContext = async () => {
-    if (!isContextInitialized) {
-      try {
-        await Tone.start();
-        Tone.setContext(new Tone.Context({ 
-          latencyHint: "interactive",
-          lookAhead: 0.1,
-          updateInterval: 0.01
-        }));
-        setIsContextInitialized(true);
-      } catch (error) {
-        console.error("Error initializing audio context:", error);
-      }
-    }
-  };
-
   const updateOscillator = useCallback((index: number, updates: Partial<OscillatorState>) => {
-    if (!oscillatorNodes[index]) return;
+    if (!oscillatorUnits[index]) return;
 
     setStates(prev => prev.map((state, i) => {
       if (i !== index) return state;
       
       const newState = { ...state, ...updates };
-      const osc = oscillatorNodes[i];
+      const unit = oscillatorUnits[i];
 
       try {
         if ('frequency' in updates) {
-          osc.frequency.value = updates.frequency!;
+          unit.oscillator.frequency.value = updates.frequency!;
         }
         if ('amplitude' in updates) {
-          osc.volume.value = Tone.gainToDb(updates.amplitude!);
+          // Only update gain if oscillator is playing
+          if (state.isPlaying) {
+            unit.gainNode.gain.value = updates.amplitude!;
+          }
         }
         if ('phase' in updates) {
-          // For phase changes, we need to restart the oscillator if it's playing
-          const wasPlaying = osc.state === "started";
-          if (wasPlaying) {
-            osc.stop();
-          }
-          osc.phase = updates.phase!;
-          if (wasPlaying) {
-            osc.start();
-          }
+          unit.oscillator.phase = updates.phase!;
         }
       } catch (error) {
         console.error("Error updating oscillator:", error);
@@ -113,39 +99,31 @@ const ToneCreator = () => {
       
       return newState;
     }));
-  }, [oscillatorNodes]);
+  }, [oscillatorUnits]);
 
-  const togglePlay = useCallback(async (index: number) => {
-    if (!oscillatorNodes[index]) return;
+  const togglePlay = useCallback((index: number) => {
+    if (!oscillatorUnits[index]) return;
 
     try {
-      const osc = oscillatorNodes[index];
-      const isPlaying = osc.state === "started";
+      const unit = oscillatorUnits[index];
+      const newIsPlaying = !states[index].isPlaying;
 
-      if (isPlaying) {
-        osc.stop();
-      } else {
-        osc.start();
-      }
+      // Use gain to control playback
+      unit.gainNode.gain.value = newIsPlaying ? states[index].amplitude : 0;
 
       setStates(prev => prev.map((state, i) => 
-        i === index ? { ...state, isPlaying: !isPlaying } : state
+        i === index ? { ...state, isPlaying: newIsPlaying } : state
       ));
     } catch (error) {
       console.error("Error toggling oscillator:", error);
     }
-  }, [oscillatorNodes]);
+  }, [oscillatorUnits, states]);
 
   return (
     <div className="p-6">
-      {!isContextInitialized ? (
+      {!isInitialized ? (
         <div className="text-center p-8">
-          <button
-            onClick={initializeContext}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
-          >
-            Click to Enable Audio
-          </button>
+          <p>Initializing audio...</p>
         </div>
       ) : (
         <>

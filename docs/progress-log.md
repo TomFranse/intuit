@@ -207,4 +207,37 @@
 1. Add waveform visualization for each tone
 2. Implement harmonic controls
 3. Add envelope controls for amplitude shaping
+4. Create tone preset saving functionality
+
+## 2024-01-17: Global Master Clock Implementation
+
+### Completed Tasks
+1. **Global Master Clock Setup**
+   - Created ToneContext to manage global audio state
+   - Implemented masterClock reference for consistent timing across app
+   - Added proper cleanup and initialization handling
+
+2. **Architecture Improvements**
+   - Moved audio context management to global context
+   - Ensured oscillators sync to global master clock
+   - Improved state management and error handling
+
+### Technical Details
+- Master Clock:
+  - Uses Tone.Transport as the central timing source
+  - Maintains phase relationships between all oscillators
+  - Persists across component unmounts/remounts
+- Context Management:
+  - Single audio context instance for entire app
+  - Proper resource cleanup on app shutdown
+  - Better error handling for audio operations
+- Component Integration:
+  - Components can access master clock via useTone hook
+  - Oscillators automatically sync to master clock
+  - Improved phase accuracy between oscillators
+
+### Next Steps
+1. Add waveform visualization for each tone
+2. Implement harmonic controls
+3. Add envelope controls for amplitude shaping
 4. Create tone preset saving functionality 
