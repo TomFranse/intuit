@@ -388,3 +388,84 @@
 2. Add envelope controls for amplitude shaping
 3. Create tone preset saving functionality
 4. Add more advanced visualization options 
+
+## 2024-01-17: Audio Initialization and Visualization Fixes
+
+### Completed Tasks
+1. **Audio Initialization Modal**
+   - Created new `AudioInitModal` component
+   - Implemented overlay with blur effect
+   - Added proper modal transitions
+   - Improved user experience with clear instructions
+   - Added visual feedback with icon
+
+2. **Visualization Fixes**
+   - Fixed analyzer connection issues:
+     - Separated analyzer creation and visualization logic
+     - Improved cleanup of audio nodes
+     - Added proper connection/disconnection handling
+   - Enhanced visualization stability:
+     - Better state management for analyzers
+     - Proper cleanup of animation frames
+     - Improved error handling
+   - Fixed timing issues with oscillator initialization
+
+### Technical Details
+- Modal implementation:
+  - Using MUI Modal with Backdrop and Fade
+  - Proper z-index handling
+  - Responsive design for all screen sizes
+- Analyzer improvements:
+  - Separate useEffect hooks for:
+    - Analyzer creation/connection
+    - Visualization rendering
+  - Proper cleanup on unmount
+  - Better error handling
+- State management:
+  - Added showControls state for proper initialization
+  - Improved dependency management in effects
+  - Better cleanup of resources
+
+### Next Steps
+1. Implement harmonic controls for complex waveforms
+2. Add envelope controls for amplitude shaping
+3. Create tone preset saving functionality
+4. Add more advanced visualization options 
+
+## Known Issues
+- Phase cancellation test is not achieving complete cancellation
+- Phase relationship between oscillators needs further investigation
+- These issues will be addressed in a future update
+
+## 2024-01-17: Harmonic Controls Implementation
+
+### Planned Tasks
+1. **Harmonic Control Interface**
+   - Add partial count control for complex waveforms
+   - Implement harmonicity control for FM/AM synthesis
+   - Create individual harmonic amplitude controls
+   - Add harmonic phase adjustment capabilities
+
+2. **Extended Oscillator Types**
+   - Add FM synthesis options
+   - Implement AM synthesis
+   - Add fat oscillator mode
+   - Support PWM waveforms
+
+3. **UI Components**
+   - Create harmonic visualization
+   - Add individual harmonic controls
+   - Implement preset management for harmonic configurations
+   - Add real-time harmonic spectrum display
+
+### Technical Approach
+- Use Tone.js OmniOscillator's extended capabilities
+- Implement proper parameter mapping for harmonics
+- Create efficient UI for multiple harmonic controls
+- Ensure proper cleanup and state management
+
+### Implementation Steps
+1. Extend oscillator state interface
+2. Create harmonic control components
+3. Implement parameter binding
+4. Add visualization for harmonic content 

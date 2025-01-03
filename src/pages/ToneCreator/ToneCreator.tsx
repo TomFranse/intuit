@@ -4,6 +4,7 @@ import { useTone } from '../../contexts/ToneContext';
 import { OmniOscillatorType, ToneOscillatorType } from 'tone/build/esm/source/oscillator/OscillatorInterface';
 import { WaveformVisualizer } from '../../components/WaveformVisualizer/WaveformVisualizer';
 import { SpectrumVisualizer } from '../../components/SpectrumVisualizer/SpectrumVisualizer';
+import { AudioInitModal } from '../../components/AudioInitModal/AudioInitModal';
 import {
   Box,
   Button,
@@ -21,6 +22,12 @@ import {
   useTheme
 } from '@mui/material';
 import { PlayArrow, Stop } from '@mui/icons-material';
+import { HarmonicControls } from '../../components/HarmonicControls/HarmonicControls';
+
+interface Harmonic {
+  amplitude: number;
+  phase: number;
+}
 
 interface OscillatorState {
   isPlaying: boolean;
@@ -28,8 +35,10 @@ interface OscillatorState {
   amplitude: number;
   phase: number;
   type: ToneOscillatorType;
-  partialCount?: number;
-  harmonicity?: number;
+  partialCount: number;
+  harmonicity: number;
+  modulationIndex?: number;
+  harmonics: Harmonic[];
 }
 
 interface OscillatorUnit {
@@ -44,6 +53,7 @@ const ToneCreator = () => {
   const [testResult, setTestResult] = useState<string>("");
   const [transportTime, setTransportTime] = useState<number>(0);
   const animationFrameRef = useRef<number>();
+  const [showControls, setShowControls] = useState(false);
 
   const [states, setStates] = useState<OscillatorState[]>([
     {
@@ -52,8 +62,10 @@ const ToneCreator = () => {
       amplitude: 0.5,
       phase: 0,
       type: "sine",
-      partialCount: 0,
+      partialCount: 1,
       harmonicity: 1,
+      modulationIndex: 0,
+      harmonics: [{ amplitude: 1, phase: 0 }],
     },
     {
       isPlaying: false,
@@ -61,8 +73,10 @@ const ToneCreator = () => {
       amplitude: 0.5,
       phase: 0,
       type: "sine",
-      partialCount: 0,
+      partialCount: 1,
       harmonicity: 1,
+      modulationIndex: 0,
+      harmonics: [{ amplitude: 1, phase: 0 }],
     },
   ]);
 
@@ -80,7 +94,7 @@ const ToneCreator = () => {
 
     // Create both oscillators before starting either
     for (let i = 0; i < 2; i++) {
-      const gainNode = new Tone.Gain(0).toDestination();
+      const gainNode = new Tone.Gain(0);
       const oscillator = new Tone.OmniOscillator(
         states[i].frequency,
         states[i].type as OmniOscillatorType
@@ -97,6 +111,9 @@ const ToneCreator = () => {
 
       // Sync to transport before starting
       oscillator.sync();
+
+      // Connect gain node to destination
+      gainNode.toDestination();
 
       units.push({
         oscillator,
@@ -125,7 +142,10 @@ const ToneCreator = () => {
 
   // Initialize oscillators when component mounts
   useEffect(() => {
-    setupOscillators();
+    if (isInitialized && !showControls) {
+      setupOscillators();
+      setShowControls(true);
+    }
     return () => {
       // Stop Transport and cleanup oscillators
       Tone.Transport.stop();
@@ -134,7 +154,7 @@ const ToneCreator = () => {
         unit.gainNode.dispose();
       });
     };
-  }, []); // Empty dependency array since setupOscillators handles state internally
+  }, [isInitialized]); // Only run when isInitialized changes
 
   const updateOscillator = useCallback((index: number, updates: Partial<OscillatorState>) => {
     if (!oscillatorUnits[index]) return;
@@ -146,17 +166,22 @@ const ToneCreator = () => {
       const unit = oscillatorUnits[i];
 
       try {
-        // Need to recreate oscillator if frequency or phase changes
-        if ('frequency' in updates || 'phase' in updates) {
+        // Need to recreate oscillator if frequency, phase, or type changes
+        if ('frequency' in updates || 'phase' in updates || 'type' in updates || 
+            'partialCount' in updates || 'harmonicity' in updates || 
+            'modulationIndex' in updates || 'harmonics' in updates) {
           const currentTime = Tone.Transport.now();
           const startTime = Number(currentTime) + 0.1;
+          
+          // Get all the new values
           const newFrequency = 'frequency' in updates ? Number(updates.frequency!) : Number(unit.oscillator.frequency.value);
           const newPhase = 'phase' in updates ? Number(updates.phase!) / 360 : unit.oscillator.phase;
+          const newType = 'type' in updates ? updates.type! : unit.oscillator.type;
           
           console.log(`Recreating oscillator ${index}:`, {
             frequency: newFrequency,
             phase: newPhase,
-            cycleLength: 1 / Number(newFrequency),
+            type: newType,
             transportTime: currentTime
           });
 
@@ -167,13 +192,22 @@ const ToneCreator = () => {
           }
 
           // Create new oscillator with all current settings
-          const newOsc = new Tone.OmniOscillator(
-            newFrequency,
-            unit.oscillator.type as OmniOscillatorType
-          ).connect(unit.gainNode);
+          const newOsc = new Tone.OmniOscillator({
+            frequency: newFrequency,
+            type: newType,
+            partialCount: newState.partialCount,
+            harmonicity: newState.harmonicity,
+            modulationIndex: newState.modulationIndex,
+          }).connect(unit.gainNode);
 
           // Set phase before sync
           newOsc.phase = newPhase;
+
+          // Apply harmonic settings if applicable
+          if (newState.harmonics && !newType.includes('fm') && !newType.includes('am') && !newType.includes('fat')) {
+            newOsc.partials = newState.harmonics.map(h => h.amplitude);
+            // Note: Tone.js doesn't support individual phase per partial
+          }
 
           // Sync and start at precise time
           newOsc.sync();
@@ -191,14 +225,12 @@ const ToneCreator = () => {
           console.log(`New oscillator state:`, {
             frequency: newOsc.frequency.value,
             phase: newOsc.phase,
+            type: newOsc.type,
             transportTime: currentTime,
-            scheduledStartTime: startTime,
-            cycleLength: 1 / newFrequency
+            scheduledStartTime: startTime
           });
         } else if ('amplitude' in updates && state.isPlaying) {
           unit.gainNode.gain.value = updates.amplitude!;
-        } else if ('type' in updates) {
-          unit.oscillator.type = updates.type! as OmniOscillatorType;
         }
       } catch (error) {
         console.error("Error updating oscillator:", error);
@@ -390,6 +422,23 @@ const ToneCreator = () => {
         </FormControl>
       </Box>
 
+      <HarmonicControls
+        type={states[index].type}
+        partialCount={states[index].partialCount}
+        harmonicity={states[index].harmonicity}
+        modulationIndex={states[index].modulationIndex}
+        harmonics={states[index].harmonics}
+        onTypeChange={(type) => updateOscillator(index, { type })}
+        onPartialCountChange={(count) => updateOscillator(index, { partialCount: count })}
+        onHarmonicityChange={(value) => updateOscillator(index, { harmonicity: value })}
+        onModulationIndexChange={(value) => updateOscillator(index, { modulationIndex: value })}
+        onHarmonicChange={(hIndex, harmonic) => {
+          const newHarmonics = [...states[index].harmonics];
+          newHarmonics[hIndex] = harmonic;
+          updateOscillator(index, { harmonics: newHarmonics });
+        }}
+      />
+
       {oscillatorUnits[index] && (
         <Box sx={{ mt: 4 }}>
           <Box sx={{ mb: 3 }}>
@@ -457,19 +506,13 @@ const ToneCreator = () => {
       <Typography variant="h4" gutterBottom sx={{ mb: 4 }}>
         Tone Creator
       </Typography>
-      
-      {!isInitialized && (
-        <Button 
-          variant="contained"
-          size="large"
-          onClick={initializeAudio}
-          sx={{ mb: 4 }}
-        >
-          Enable Audio
-        </Button>
-      )}
 
-      {isInitialized && (
+      <AudioInitModal 
+        open={!isInitialized} 
+        onInitialize={initializeAudio} 
+      />
+      
+      {showControls && (
         <>
           <Grid container spacing={4}>
             <Grid item xs={12} md={6}>

@@ -20,14 +20,26 @@ export const WaveformVisualizer = ({
   const analyzerRef = useRef<Tone.Analyser | null>(null);
   const animationFrameRef = useRef<number>();
 
+  // Create and connect analyzer
   useEffect(() => {
-    if (!canvasRef.current) return;
+    // Create new analyzer
+    const analyzer = new Tone.Analyser('waveform', 1024);
+    analyzerRef.current = analyzer;
 
-    // Create analyzer if it doesn't exist
-    if (!analyzerRef.current) {
-      analyzerRef.current = new Tone.Analyser('waveform', 1024);
-      gainNode.connect(analyzerRef.current);
-    }
+    // Connect to the audio chain
+    gainNode.connect(analyzer);
+
+    return () => {
+      // Cleanup
+      gainNode.disconnect(analyzer);
+      analyzer.dispose();
+      analyzerRef.current = null;
+    };
+  }, [gainNode]);
+
+  // Handle visualization
+  useEffect(() => {
+    if (!canvasRef.current || !analyzerRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -104,12 +116,8 @@ export const WaveformVisualizer = ({
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      if (analyzerRef.current) {
-        analyzerRef.current.dispose();
-        analyzerRef.current = null;
-      }
     };
-  }, [oscillator, gainNode, width, height, theme]);
+  }, [width, height, theme]);
 
   return (
     <canvas
