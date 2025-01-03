@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Tone from 'tone';
 import { useTone } from '../../contexts/ToneContext';
 import { OmniOscillatorType, ToneOscillatorType } from 'tone/build/esm/source/oscillator/OscillatorInterface';
@@ -22,6 +22,8 @@ const ToneCreator = () => {
   const { isInitialized, initializeAudio } = useTone();
   const [oscillatorUnits, setOscillatorUnits] = useState<OscillatorUnit[]>([]);
   const [testResult, setTestResult] = useState<string>("");
+  const [transportTime, setTransportTime] = useState<number>(0);
+  const animationFrameRef = useRef<number>();
 
   const [states, setStates] = useState<OscillatorState[]>([
     {
@@ -44,45 +46,75 @@ const ToneCreator = () => {
     },
   ]);
 
-  // Initialize oscillators after context is ready
-  useEffect(() => {
-    if (!isInitialized) return;
+  const setupOscillators = useCallback(() => {
+    // Reset and start Transport
+    Tone.Transport.stop();
+    Tone.Transport.seconds = 0;
+    
+    console.log("Setting up oscillators at Transport time:", Tone.Transport.seconds);
+    console.log("Transport state:", Tone.Transport.state);
 
-    // Ensure Transport is started
-    if (Tone.Transport.state !== 'started') {
-      Tone.Transport.start();
+    // Create both oscillators at the same time
+    const startTime = Tone.Transport.now() + 0.1; // Small delay for setup
+    const units: OscillatorUnit[] = [];
+
+    // Create both oscillators before starting either
+    for (let i = 0; i < 2; i++) {
+      const gainNode = new Tone.Gain(0).toDestination();
+      const oscillator = new Tone.OmniOscillator(
+        states[i].frequency,
+        states[i].type as OmniOscillatorType
+      ).connect(gainNode);
+      
+      // Set phase before sync
+      oscillator.phase = states[i].phase / 360;
+
+      console.log(`Oscillator ${i} cycle info:`, {
+        frequency: Number(oscillator.frequency.value),
+        phase: oscillator.phase,
+        cycleLength: 1 / Number(oscillator.frequency.value)
+      });
+
+      // Sync to transport before starting
+      oscillator.sync();
+
+      units.push({
+        oscillator,
+        gainNode,
+      });
     }
 
-    // Create oscillator units with gain nodes
-    const units = states.map((state) => {
-      const gainNode = new Tone.Gain(0).toDestination();
-      // Create oscillator with frequency and type first
-      const oscillator = new Tone.OmniOscillator(state.frequency, state.type as OmniOscillatorType)
-        .connect(gainNode)
-        .sync() // Sync to Transport's timeline
-        .start("+0.1"); // Small delay to ensure sync is established
+    // Start Transport before starting oscillators
+    Tone.Transport.start(startTime);
 
-      // Set phase after sync
-      oscillator.phase = state.phase;
-
-      return { oscillator, gainNode };
+    // Start both oscillators at exactly the same time
+    units.forEach((unit, i) => {
+      console.log(`Starting oscillator ${i}:`, {
+        frequency: Number(unit.oscillator.frequency.value),
+        phase: unit.oscillator.phase,
+        startTime
+      });
+      unit.oscillator.start(startTime);
+      if (states[i].isPlaying) {
+        unit.gainNode.gain.setValueAtTime(states[i].amplitude, startTime);
+      }
     });
 
     setOscillatorUnits(units);
+  }, [states]);
 
+  // Initialize oscillators when component mounts
+  useEffect(() => {
+    setupOscillators();
     return () => {
-      // Stop Transport if no other oscillators are using it
+      // Stop Transport and cleanup oscillators
       Tone.Transport.stop();
-      units.forEach(unit => {
-        try {
-          unit.gainNode.dispose();
-          unit.oscillator.dispose();
-        } catch (error) {
-          console.error("Error cleaning up oscillator unit:", error);
-        }
+      oscillatorUnits.forEach(unit => {
+        unit.oscillator.stop().dispose();
+        unit.gainNode.dispose();
       });
     };
-  }, [isInitialized]);
+  }, []); // Empty dependency array since setupOscillators handles state internally
 
   const updateOscillator = useCallback((index: number, updates: Partial<OscillatorState>) => {
     if (!oscillatorUnits[index]) return;
@@ -94,29 +126,59 @@ const ToneCreator = () => {
       const unit = oscillatorUnits[i];
 
       try {
-        if ('frequency' in updates) {
-          unit.oscillator.frequency.value = updates.frequency!;
-        }
-        if ('amplitude' in updates) {
-          if (state.isPlaying) {
-            unit.gainNode.gain.value = updates.amplitude!;
+        // Need to recreate oscillator if frequency or phase changes
+        if ('frequency' in updates || 'phase' in updates) {
+          const currentTime = Tone.Transport.now();
+          const startTime = Number(currentTime) + 0.1;
+          const newFrequency = 'frequency' in updates ? Number(updates.frequency!) : Number(unit.oscillator.frequency.value);
+          const newPhase = 'phase' in updates ? Number(updates.phase!) / 360 : unit.oscillator.phase;
+          
+          console.log(`Recreating oscillator ${index}:`, {
+            frequency: newFrequency,
+            phase: newPhase,
+            cycleLength: 1 / Number(newFrequency),
+            transportTime: currentTime
+          });
+
+          // Stop current oscillator
+          const wasPlaying = states[index].isPlaying;
+          if (wasPlaying) {
+            unit.gainNode.gain.setValueAtTime(0, currentTime);
           }
-        }
-        if ('phase' in updates) {
-          unit.oscillator.phase = updates.phase!;
-        }
-        if ('type' in updates) {
+
+          // Create new oscillator with all current settings
+          const newOsc = new Tone.OmniOscillator(
+            newFrequency,
+            unit.oscillator.type as OmniOscillatorType
+          ).connect(unit.gainNode);
+
+          // Set phase before sync
+          newOsc.phase = newPhase;
+
+          // Sync and start at precise time
+          newOsc.sync();
+          newOsc.start(startTime);
+
+          // Schedule gain change
+          if (wasPlaying) {
+            unit.gainNode.gain.setValueAtTime(state.amplitude, startTime);
+          }
+
+          // Schedule old oscillator cleanup
+          unit.oscillator.stop(startTime).dispose();
+          unit.oscillator = newOsc;
+
+          console.log(`New oscillator state:`, {
+            frequency: newOsc.frequency.value,
+            phase: newOsc.phase,
+            transportTime: currentTime,
+            scheduledStartTime: startTime,
+            cycleLength: 1 / newFrequency
+          });
+        } else if ('amplitude' in updates && state.isPlaying) {
+          unit.gainNode.gain.value = updates.amplitude!;
+        } else if ('type' in updates) {
           unit.oscillator.type = updates.type! as OmniOscillatorType;
-        }
-        if ('partialCount' in updates && updates.partialCount !== undefined) {
-          if ('partialCount' in unit.oscillator) {
-            unit.oscillator.partialCount = updates.partialCount;
-          }
-        }
-        if ('harmonicity' in updates && updates.harmonicity !== undefined) {
-          if ('harmonicity' in unit.oscillator && unit.oscillator.harmonicity) {
-            unit.oscillator.harmonicity.value = updates.harmonicity;
-          }
         }
       } catch (error) {
         console.error("Error updating oscillator:", error);
@@ -124,7 +186,7 @@ const ToneCreator = () => {
       
       return newState;
     }));
-  }, [oscillatorUnits]);
+  }, [oscillatorUnits, states]);
 
   const togglePlay = useCallback((index: number) => {
     if (!oscillatorUnits[index]) return;
@@ -221,6 +283,24 @@ const ToneCreator = () => {
     </div>
   );
 
+  // Update transport time display
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const updateTime = () => {
+      setTransportTime(Tone.Transport.seconds);
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    };
+
+    updateTime();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isInitialized]);
+
   return (
     <div className="p-6">
       {!isInitialized ? (
@@ -234,7 +314,12 @@ const ToneCreator = () => {
         </div>
       ) : (
         <>
-          <h1 className="text-2xl font-bold mb-6">Dual Tone Creator</h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Dual Tone Creator</h1>
+            <div className="font-mono text-sm">
+              Transport Time: {transportTime.toFixed(3)}s
+            </div>
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {states.map((state, index) => (
