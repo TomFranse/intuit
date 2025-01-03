@@ -279,3 +279,112 @@
 2. Implement harmonic controls
 3. Add envelope controls for amplitude shaping
 4. Create tone preset saving functionality 
+
+## Oscillator Synchronization and Phase Investigation
+- **Transport and Oscillator Timing**: Implemented synchronized oscillator creation using Tone.Transport as the master clock. Both oscillators are now created simultaneously and started at a precise scheduled time.
+- **Phase Handling**: 
+  - Identified issues with phase cancellation (only achieving -5.39dB reduction instead of complete cancellation)
+  - Found that oscillators were starting at slightly different times (0.0107s difference)
+  - Implemented precise timing control using Transport synchronization
+  - Added phase setting before oscillator sync to maintain phase relationships
+- **Current Challenges**:
+  - Phase cancellation is still not complete at 180 degrees
+  - Need to investigate if phase offset is being maintained over time
+  - Testing shows better phase relationship but not perfect cancellation
+
+## Renamed Transport to MasterClock
+- **MasterClock Renaming**: Renamed the Transport to masterClock for clarity and ease of reference in future discussions.
+- **Context Management Improvements**: The masterClock is now referenced in the context provider, ensuring consistent timing across the application.
+
+## Audio Context Initialization
+- **Issue**: Initial implementation of audio context initialization was causing issues with the "Click to Enable Audio" button.
+- **Resolution**: Simplified the audio initialization process to properly handle user interaction requirements.
+- **Implementation**: Updated ToneContext to manage audio context state and initialization.
+
+## Basic Oscillator Implementation
+- Created basic oscillator functionality with frequency control
+- Implemented amplitude control
+- Added basic wave type selection
+- Implemented phase control with degree input
+
+## Initial Setup
+- Created React project with Vite
+- Added ToneJS integration
+- Set up basic project structure
+- Implemented basic audio context management 
+
+## 2024-01-17: Added Real-Time Waveform and Spectrum Visualization
+
+### Completed Tasks
+1. **Visualization Components**
+   - Created `WaveformVisualizer` component for time-domain visualization
+   - Created `SpectrumVisualizer` component for frequency-domain visualization
+   - Added real-time rendering using Canvas API
+   - Implemented proper cleanup of analyzer nodes and animation frames
+
+2. **UI Integration**
+   - Added visualizers to each oscillator in ToneCreator
+   - Updated layout to accommodate visualizations
+   - Improved overall UI with Bootstrap styling
+   - Added responsive design for different screen sizes
+
+### Technical Details
+- Using Tone.js Analyzer nodes for:
+  - Waveform analysis (1024 samples)
+  - FFT analysis (2048 samples)
+- Canvas-based rendering for efficient updates
+- Proper audio node routing:
+  - Oscillator -> Gain -> Analyzer -> Destination
+- Automatic cleanup of resources on unmount
+
+### Next Steps
+1. Implement harmonic controls for complex waveforms
+2. Add envelope controls for amplitude shaping
+3. Create tone preset saving functionality
+4. Add more advanced visualization options 
+
+## 2024-01-17: Material-UI Implementation and Enhanced Visualizations
+
+### Completed Tasks
+1. **Material-UI Integration**
+   - Added Material-UI dependencies
+   - Refactored ToneCreator component with MUI components
+   - Implemented responsive grid layout
+   - Added proper spacing and elevation to components
+   - Enhanced visual hierarchy with Typography components
+
+2. **Visualization Improvements**
+   - Enhanced WaveformVisualizer with:
+     - Grid lines for better readability
+     - Center line indicator
+     - Improved waveform rendering
+     - Theme-aware colors
+   - Enhanced SpectrumVisualizer with:
+     - Logarithmic frequency scale
+     - Frequency and dB labels
+     - Grid lines for measurement
+     - Gradient-filled spectrum bars
+     - Theme-aware colors
+
+3. **UI/UX Enhancements**
+   - Added icons to play/stop buttons
+   - Improved slider and input field interactions
+   - Better visual feedback for active states
+   - Consistent spacing and alignment
+   - Enhanced readability with proper typography
+
+### Technical Details
+- Using MUI's theme system for consistent styling
+- Responsive design with Grid components
+- Canvas-based visualizations with:
+  - Logarithmic frequency scale (20Hz - 5kHz)
+  - dB scale (-100dB to 0dB)
+  - Real-time updates
+  - Proper cleanup of resources
+- Improved error handling and state management
+
+### Next Steps
+1. Implement harmonic controls for complex waveforms
+2. Add envelope controls for amplitude shaping
+3. Create tone preset saving functionality
+4. Add more advanced visualization options 

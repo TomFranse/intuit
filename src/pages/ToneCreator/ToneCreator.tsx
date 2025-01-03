@@ -2,6 +2,25 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Tone from 'tone';
 import { useTone } from '../../contexts/ToneContext';
 import { OmniOscillatorType, ToneOscillatorType } from 'tone/build/esm/source/oscillator/OscillatorInterface';
+import { WaveformVisualizer } from '../../components/WaveformVisualizer/WaveformVisualizer';
+import { SpectrumVisualizer } from '../../components/SpectrumVisualizer/SpectrumVisualizer';
+import {
+  Box,
+  Button,
+  Container,
+  Grid,
+  Paper,
+  Slider,
+  TextField,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  useTheme
+} from '@mui/material';
+import { PlayArrow, Stop } from '@mui/icons-material';
 
 interface OscillatorState {
   isPlaying: boolean;
@@ -19,6 +38,7 @@ interface OscillatorUnit {
 }
 
 const ToneCreator = () => {
+  const theme = useTheme();
   const { isInitialized, initializeAudio } = useTone();
   const [oscillatorUnits, setOscillatorUnits] = useState<OscillatorUnit[]>([]);
   const [testResult, setTestResult] = useState<string>("");
@@ -268,19 +288,150 @@ const ToneCreator = () => {
     }
   }, [oscillatorUnits, updateOscillator, togglePlay, states]);
 
-  // Add test button to UI
-  const renderTestButton = () => (
-    <div className="col-span-full text-center mt-4">
-      <button
-        onClick={testPhase}
-        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-      >
-        Test Phase Cancellation
-      </button>
-      {testResult && (
-        <div className="mt-2 text-sm font-mono">{testResult}</div>
+  const renderOscillatorControls = (index: number) => (
+    <Paper 
+      elevation={3} 
+      sx={{ 
+        p: 3, 
+        mb: 3,
+        borderRadius: 2,
+        backgroundColor: theme.palette.background.paper
+      }}
+    >
+      <Typography variant="h5" gutterBottom>
+        Oscillator {index + 1}
+      </Typography>
+      
+      <Box sx={{ mb: 3 }}>
+        <Button
+          variant="contained"
+          startIcon={states[index].isPlaying ? <Stop /> : <PlayArrow />}
+          color={states[index].isPlaying ? "error" : "primary"}
+          onClick={() => togglePlay(index)}
+          fullWidth
+        >
+          {states[index].isPlaying ? 'Stop' : 'Play'}
+        </Button>
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <Typography gutterBottom>Frequency (Hz)</Typography>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={8}>
+            <Slider
+              value={states[index].frequency}
+              min={20}
+              max={2000}
+              onChange={(_, value) => updateOscillator(index, { frequency: value as number })}
+              valueLabelDisplay="auto"
+            />
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              type="number"
+              size="small"
+              value={states[index].frequency}
+              onChange={(e) => updateOscillator(index, { frequency: Number(e.target.value) })}
+              inputProps={{ min: 20, max: 2000 }}
+            />
+          </Grid>
+        </Grid>
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <Typography gutterBottom>Amplitude</Typography>
+        <Slider
+          value={states[index].amplitude}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(_, value) => updateOscillator(index, { amplitude: value as number })}
+          valueLabelDisplay="auto"
+        />
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <Typography gutterBottom>Phase (degrees)</Typography>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={8}>
+            <Slider
+              value={states[index].phase}
+              min={0}
+              max={360}
+              onChange={(_, value) => updateOscillator(index, { phase: value as number })}
+              valueLabelDisplay="auto"
+            />
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              type="number"
+              size="small"
+              value={states[index].phase}
+              onChange={(e) => updateOscillator(index, { phase: Number(e.target.value) })}
+              inputProps={{ min: 0, max: 360 }}
+            />
+          </Grid>
+        </Grid>
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <FormControl fullWidth>
+          <InputLabel>Waveform Type</InputLabel>
+          <Select
+            value={states[index].type}
+            label="Waveform Type"
+            onChange={(e) => updateOscillator(index, { type: e.target.value as ToneOscillatorType })}
+          >
+            <MenuItem value="sine">Sine</MenuItem>
+            <MenuItem value="square">Square</MenuItem>
+            <MenuItem value="triangle">Triangle</MenuItem>
+            <MenuItem value="sawtooth">Sawtooth</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
+      {oscillatorUnits[index] && (
+        <Box sx={{ mt: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Waveform</Typography>
+            <Paper 
+              elevation={1} 
+              sx={{ 
+                p: 1, 
+                backgroundColor: theme.palette.grey[50],
+                borderRadius: 1
+              }}
+            >
+              <WaveformVisualizer
+                oscillator={oscillatorUnits[index].oscillator}
+                gainNode={oscillatorUnits[index].gainNode}
+                width={400}
+                height={200}
+              />
+            </Paper>
+          </Box>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Frequency Spectrum</Typography>
+            <Paper 
+              elevation={1} 
+              sx={{ 
+                p: 1, 
+                backgroundColor: theme.palette.grey[50],
+                borderRadius: 1
+              }}
+            >
+              <SpectrumVisualizer
+                oscillator={oscillatorUnits[index].oscillator}
+                gainNode={oscillatorUnits[index].gainNode}
+                width={400}
+                height={200}
+              />
+            </Paper>
+          </Box>
+        </Box>
       )}
-    </div>
+    </Paper>
   );
 
   // Update transport time display
@@ -302,171 +453,50 @@ const ToneCreator = () => {
   }, [isInitialized]);
 
   return (
-    <div className="p-6">
-      {!isInitialized ? (
-        <div className="text-center p-8">
-          <button
-            onClick={initializeAudio}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
-          >
-            Enable Audio
-          </button>
-        </div>
-      ) : (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Typography variant="h4" gutterBottom sx={{ mb: 4 }}>
+        Tone Creator
+      </Typography>
+      
+      {!isInitialized && (
+        <Button 
+          variant="contained"
+          size="large"
+          onClick={initializeAudio}
+          sx={{ mb: 4 }}
+        >
+          Enable Audio
+        </Button>
+      )}
+
+      {isInitialized && (
         <>
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">Dual Tone Creator</h1>
-            <div className="font-mono text-sm">
-              Transport Time: {transportTime.toFixed(3)}s
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {states.map((state, index) => (
-              <div key={index} className="p-6 bg-white rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4">Tone {index + 1}</h2>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Frequency
-                    </label>
-                    <div className="flex gap-4 items-center">
-                      <input
-                        type="range"
-                        min="20"
-                        max="2000"
-                        value={state.frequency}
-                        onChange={(e) => updateOscillator(index, { frequency: Number(e.target.value) })}
-                        className="flex-1"
-                      />
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="20"
-                          max="2000"
-                          value={state.frequency}
-                          onChange={(e) => updateOscillator(index, { frequency: Number(e.target.value) })}
-                          className="w-20 px-2 py-1 border rounded"
-                        />
-                        <span className="text-sm">Hz</span>
-                      </div>
-                    </div>
-                  </div>
+          <Grid container spacing={4}>
+            <Grid item xs={12} md={6}>
+              {renderOscillatorControls(0)}
+            </Grid>
+            <Grid item xs={12} md={6}>
+              {renderOscillatorControls(1)}
+            </Grid>
+          </Grid>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Amplitude
-                    </label>
-                    <div className="flex gap-4 items-center">
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={state.amplitude}
-                        onChange={(e) => updateOscillator(index, { amplitude: Number(e.target.value) })}
-                        className="flex-1"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={state.amplitude}
-                        onChange={(e) => updateOscillator(index, { amplitude: Number(e.target.value) })}
-                        className="w-20 px-2 py-1 border rounded"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Phase
-                    </label>
-                    <div className="flex gap-4 items-center">
-                      <input
-                        type="range"
-                        min="0"
-                        max="360"
-                        value={state.phase}
-                        onChange={(e) => updateOscillator(index, { phase: Number(e.target.value) })}
-                        className="flex-1"
-                      />
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="360"
-                          value={state.phase}
-                          onChange={(e) => updateOscillator(index, { phase: Number(e.target.value) })}
-                          className="w-20 px-2 py-1 border rounded"
-                        />
-                        <span className="text-sm">°</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Oscillator Type
-                    </label>
-                    <select
-                      value={state.type}
-                      onChange={(e) => updateOscillator(index, { type: e.target.value as ToneOscillatorType })}
-                      className="w-full px-2 py-1 border rounded"
-                    >
-                      <option value="sine">Sine</option>
-                      <option value="square">Square</option>
-                      <option value="triangle">Triangle</option>
-                      <option value="sawtooth">Sawtooth</option>
-                      <option value="fmsine">FM Sine</option>
-                      <option value="amsine">AM Sine</option>
-                      <option value="fatsine">Fat Sine</option>
-                    </select>
-                  </div>
-                  
-                  {(state.type.includes('fm') || state.type.includes('am')) && (
-                    <div>
-                      <label className="block text-sm font-medium mb-2">
-                        Harmonicity
-                      </label>
-                      <div className="flex gap-4 items-center">
-                        <input
-                          type="range"
-                          min="0.1"
-                          max="5"
-                          step="0.1"
-                          value={state.harmonicity}
-                          onChange={(e) => updateOscillator(index, { harmonicity: Number(e.target.value) })}
-                          className="flex-1"
-                        />
-                        <input
-                          type="number"
-                          min="0.1"
-                          max="5"
-                          step="0.1"
-                          value={state.harmonicity}
-                          onChange={(e) => updateOscillator(index, { harmonicity: Number(e.target.value) })}
-                          className="w-20 px-2 py-1 border rounded"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => togglePlay(index)}
-                    className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    {state.isPlaying ? 'Stop' : 'Play'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {renderTestButton()}
+          <Box sx={{ mt: 4 }}>
+            <Button 
+              variant="outlined"
+              onClick={testPhase}
+              sx={{ mb: 2 }}
+            >
+              Test Phase Cancellation
+            </Button>
+            {testResult && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                {testResult}
+              </Alert>
+            )}
+          </Box>
         </>
       )}
-    </div>
+    </Container>
   );
 };
 
