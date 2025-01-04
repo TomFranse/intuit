@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Tone from 'tone';
 import { OmniOscillatorType } from 'tone/build/esm/source/oscillator/OscillatorInterface';
+import { OscillatorEngine } from '../audio/OscillatorEngine';
+import { useTone } from '../contexts/ToneContext';
 
 export interface Harmonic {
   amplitude: number;
@@ -32,134 +34,93 @@ export const DEFAULT_OSCILLATOR_STATE: OscillatorState = {
 };
 
 export const useOscillator = (initialState: OscillatorState = DEFAULT_OSCILLATOR_STATE) => {
+  const { context, isReady } = useTone();
   const [state, setState] = useState<OscillatorState>(initialState);
-  const [oscillator, setOscillator] = useState<Tone.OmniOscillator<any> | null>(null);
-  const [gainNode, setGainNode] = useState<Tone.Gain | null>(null);
-  const [analyzer, setAnalyzer] = useState<Tone.Analyser | null>(null);
+  const engineRef = useRef<OscillatorEngine | null>(null);
+  const cleanupInProgressRef = useRef(false);
 
-  // Create oscillator with current state
-  const createOscillator = useCallback(() => {
-    // Clean up existing nodes
-    if (oscillator) {
-      if (oscillator.state !== 'stopped') {
-        oscillator.stop().dispose();
-      }
-    }
-    if (gainNode) gainNode.dispose();
-    if (analyzer) analyzer.dispose();
-
-    // Create new nodes
-    const newGain = new Tone.Gain(0).toDestination();
-    const newAnalyzer = new Tone.Analyser('waveform', 2048);
-    const newOsc = new Tone.OmniOscillator({
-      frequency: state.frequency,
-      type: state.type,
-      phase: state.phase,
-    });
-
-    // Connect nodes
-    newOsc.chain(newGain, newAnalyzer, Tone.Destination);
-
-    // Configure additional parameters
-    if (state.harmonics.length > 0) {
-      newOsc.partials = state.harmonics.map(h => h.amplitude);
-    }
-
-    if (state.type.includes('fm') || state.type.includes('am')) {
-      if (newOsc.harmonicity) {
-        newOsc.harmonicity.value = state.harmonicity;
-      }
-      if (state.type.includes('fm') && newOsc.modulationIndex) {
-        newOsc.modulationIndex.value = state.modulationIndex || 0;
-      }
-    }
-
-    // Update state
-    setOscillator(newOsc);
-    setGainNode(newGain);
-    setAnalyzer(newAnalyzer);
-
-    // Start if playing
-    if (state.isPlaying) {
-      newOsc.start();
-      newGain.gain.value = state.amplitude;
-    }
-  }, [state, oscillator, gainNode, analyzer]);
-
-  // Initialize on mount
+  // Create oscillator engine when context is ready
   useEffect(() => {
-    createOscillator();
+    if (!context || !isReady) return;
+
+    if (!engineRef.current) {
+      engineRef.current = new OscillatorEngine(context, {
+        frequency: state.frequency,
+        amplitude: state.amplitude,
+        phase: state.phase,
+        type: state.type,
+        partialCount: state.partialCount,
+        harmonicity: state.harmonicity,
+        modulationIndex: state.modulationIndex,
+        harmonics: state.harmonics,
+      });
+    }
+
     return () => {
-      if (oscillator) {
-        if (oscillator.state !== 'stopped') {
-          oscillator.stop().dispose();
-        }
+      if (engineRef.current && !cleanupInProgressRef.current) {
+        cleanupInProgressRef.current = true;
+        engineRef.current.dispose();
+        engineRef.current = null;
+        cleanupInProgressRef.current = false;
       }
-      if (gainNode) gainNode.dispose();
-      if (analyzer) analyzer.dispose();
     };
-  }, []);
+  }, [context, isReady]);
+
+  // Handle context state changes
+  useEffect(() => {
+    if (!context) return;
+
+    const handleStateChange = () => {
+      if (context.state === 'suspended' && state.isPlaying) {
+        setState(prev => ({ ...prev, isPlaying: false }));
+      }
+    };
+
+    context.onstatechange = handleStateChange;
+    return () => {
+      if (context) {
+        context.onstatechange = null;
+      }
+    };
+  }, [context, state.isPlaying]);
 
   // Update parameters
   const updateParameters = useCallback((updates: Partial<OscillatorState>) => {
+    if (!engineRef.current || cleanupInProgressRef.current || !context) return;
+
     setState(prev => {
       const newState = { ...prev, ...updates };
-
-      // Handle immediate parameter changes
-      if (oscillator && gainNode) {
-        const now = Tone.now();
-
-        if ('frequency' in updates) {
-          oscillator.frequency.cancelScheduledValues(now);
-          oscillator.frequency.setValueAtTime(oscillator.frequency.value, now);
-          oscillator.frequency.linearRampToValueAtTime(updates.frequency!, now + 0.1);
-        }
-
-        if ('amplitude' in updates && newState.isPlaying) {
-          gainNode.gain.cancelScheduledValues(now);
-          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-          gainNode.gain.linearRampToValueAtTime(updates.amplitude!, now + 0.1);
-        }
-
-        // Recreate oscillator for type/phase/harmonic changes
-        if ('type' in updates || 'phase' in updates || 'harmonics' in updates ||
-            'harmonicity' in updates || 'modulationIndex' in updates) {
-          createOscillator();
-        }
-      }
-
+      engineRef.current?.setParameters(updates);
       return newState;
     });
-  }, [oscillator, gainNode, createOscillator]);
+  }, [context]);
 
   // Toggle playback
   const togglePlay = useCallback(() => {
+    if (!engineRef.current || cleanupInProgressRef.current || !context) return;
+
     setState(prev => {
       const newState = { ...prev, isPlaying: !prev.isPlaying };
-
-      if (oscillator && gainNode) {
-        const now = Tone.now();
-
+      
+      try {
         if (newState.isPlaying) {
-          if (oscillator.state === 'stopped') {
-            oscillator.start(now);
-          }
-          gainNode.gain.cancelScheduledValues(now);
-          gainNode.gain.setValueAtTime(0, now);
-          gainNode.gain.linearRampToValueAtTime(newState.amplitude, now + 0.1);
+          engineRef.current?.start();
         } else {
-          gainNode.gain.cancelScheduledValues(now);
-          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-          gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
+          engineRef.current?.stop();
         }
+      } catch (error) {
+        console.error('Error toggling playback:', error);
+        return prev;
       }
 
       return newState;
     });
-  }, [oscillator, gainNode]);
+  }, [context]);
 
   // Get analyzer for visualizations
-  const getAnalyzer = useCallback(() => analyzer, [analyzer]);
+  const getAnalyzer = useCallback(() => {
+    return engineRef.current?.getAnalyzer() || null;
+  }, []);
 
   return {
     state,
