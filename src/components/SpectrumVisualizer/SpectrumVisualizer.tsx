@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as Tone from 'tone';
 import { useTheme } from '@mui/material';
+import { visualizerStyles } from '../visualizers.styles';
 
 interface SpectrumVisualizerProps {
   oscillator: Tone.OmniOscillator<any>;
@@ -16,6 +17,7 @@ export const SpectrumVisualizer = ({
   height = 150
 }: SpectrumVisualizerProps) => {
   const theme = useTheme();
+  const colors = visualizerStyles.colors(theme);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyzerRef = useRef<Tone.Analyser | null>(null);
   const animationFrameRef = useRef<number>();
@@ -51,11 +53,11 @@ export const SpectrumVisualizer = ({
       const values = analyzerRef.current.getValue() as Float32Array;
       
       // Clear canvas
-      ctx.fillStyle = theme.palette.background.paper;
+      ctx.fillStyle = colors.background;
       ctx.fillRect(0, 0, width, height);
 
       // Draw grid
-      ctx.strokeStyle = theme.palette.divider;
+      ctx.strokeStyle = colors.grid;
       ctx.lineWidth = 1;
 
       // Vertical grid lines (logarithmic scale for frequency)
@@ -68,7 +70,7 @@ export const SpectrumVisualizer = ({
         ctx.stroke();
 
         // Draw frequency labels
-        ctx.fillStyle = theme.palette.text.secondary;
+        ctx.fillStyle = colors.text;
         ctx.font = '10px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq.toString(), x, height - 2);
@@ -84,7 +86,7 @@ export const SpectrumVisualizer = ({
         ctx.stroke();
 
         // Draw dB labels
-        ctx.fillStyle = theme.palette.text.secondary;
+        ctx.fillStyle = colors.text;
         ctx.font = '10px Arial';
         ctx.textAlign = 'right';
         ctx.fillText(`${db}dB`, 25, y + 3);
@@ -92,8 +94,8 @@ export const SpectrumVisualizer = ({
 
       // Draw frequency spectrum
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, theme.palette.primary.light);
-      gradient.addColorStop(1, theme.palette.primary.main);
+      gradient.addColorStop(0, colors.harmonicGradient.start);
+      gradient.addColorStop(1, colors.harmonicGradient.end);
 
       ctx.fillStyle = gradient;
       
@@ -122,7 +124,7 @@ export const SpectrumVisualizer = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [width, height, theme]);
+  }, [width, height, colors]);
 
   return (
     <canvas
@@ -130,11 +132,8 @@ export const SpectrumVisualizer = ({
       width={width}
       height={height}
       style={{ 
-        width: '100%',
-        height: 'auto',
+        ...visualizerStyles.canvas,
         maxWidth: width,
-        display: 'block',
-        margin: '0 auto'
       }}
     />
   );

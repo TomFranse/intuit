@@ -19,47 +19,57 @@ Dependencies:
 Tone.js: For audio synthesis and real-time feedback.
 D3.js or P5.js: For visualization of waveforms and harmonics.
 
-2. Envelope Drawer
-Purpose: Let users manually draw an envelope curve (attack, decay, sustain, release) to shape the tone dynamically.
+2. Note Builder
+Purpose: Transform tones into playable notes by layering multiple tones and adding envelope controls.
 Core Features:
-Drawing Area: Canvas-based interface where users can draw the envelope.
-Real-Time Feedback: Play the tone using the drawn envelope immediately.
-Auto-Fitting: Convert the drawn line into ADSR parameters or time-varying amplitude.
-Controls:
-Basic toggle for ADSR-based control vs. freeform drawing.
-Option to save drawn envelopes for reuse.
+Tone Layering:
+Import tones from the Tone Library
+Layer multiple tones with individual controls
+Adjust relative amplitudes and phases
+Envelope Controls:
+Drawing Area: Canvas-based interface for envelope creation
+ADSR parameters for each tone layer
+Real-time preview of the combined sound
+Additional Features:
+Save notes as presets
+Export notes to the Tone Library
+Visualization of the combined waveform
 Dependencies:
-Tone.js: For dynamic envelope application.
-React-canvas or P5.js: For the drawing interface.
+Tone.js: For audio synthesis and envelope control
+React-canvas or P5.js: For envelope drawing interface
 
 3. Tone Library
-Purpose: Store and manage user-created tones for reuse in other parts of the app.
+Purpose: Store and manage user-created tones and notes for reuse in other parts of the app.
 Core Features:
-List of Saved Tones: Display tones with name, description, and playback button.
-CRUD Operations: Allow users to save, edit, delete, and duplicate tones.
-Import/Export: Enable exporting tones as presets or importing shared presets.
+Library Categories:
+Tones: Basic sound building blocks
+Notes: Tones with envelopes and layering
+List Features:
+Display with name, description, and playback button
+CRUD Operations for both tones and notes
+Import/Export functionality for sharing
 Dependencies:
-IndexedDB (or localStorage): For persistent storage of tone data.
-Tone.js: For tone playback within the library.
+IndexedDB (or localStorage): For persistent storage
+Tone.js: For tone and note playback
 
 4. Loop Builder
-Purpose: Enable users to arrange and layer tones from their library into a timeline for testing combinations.
+Purpose: Enable users to arrange and layer notes from their library into a timeline for testing combinations.
 Core Features:
 Timeline Interface:
-Drag-and-drop tones onto a timeline.
-Adjustable start time, duration, and looping for each tone.
+Drag-and-drop notes onto a timeline
+Adjustable start time, duration, and looping
 Playback Controls:
-Play, pause, stop, and loop options for the full arrangement.
-Tone References:
-Link tones directly from the tone library (ensure updates in the library reflect in the loop builder).
+Play, pause, stop, and loop options
+Note References:
+Link directly from the tone library
 Visualization:
-Display waveform previews of tones in the timeline.
+Display waveform previews in timeline
 Advanced Features:
-Volume Automation: Allow users to add volume envelopes to tones in the timeline.
-Multi-layer Playback: Play overlapping tones with accurate timing.
+Volume Automation per note
+Multi-layer playback with accurate timing
 Dependencies:
-Tone.js: For timeline-based tone playback and synchronization.
-React-dnd or similar drag-and-drop library: For arranging tones on the timeline.
+Tone.js: For timeline-based playback and synchronization
+React-dnd: For timeline arrangement
 
 High-Level Architecture
 Frontend:

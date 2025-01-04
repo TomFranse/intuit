@@ -1,15 +1,17 @@
+import React from 'react';
+import { ThemeProvider } from '@mui/material';
 import { ToneProvider } from './contexts/ToneContext';
+import { theme } from './theme';
 import ToneCreator from './pages/ToneCreator/ToneCreator';
-import './App.css';
 
-function App() {
+const App: React.FC = () => {
   return (
-    <ToneProvider>
-      <div className="min-h-screen bg-gray-100">
+    <ThemeProvider theme={theme}>
+      <ToneProvider>
         <ToneCreator />
-      </div>
-    </ToneProvider>
+      </ToneProvider>
+    </ThemeProvider>
   );
-}
+};
 
 export default App;

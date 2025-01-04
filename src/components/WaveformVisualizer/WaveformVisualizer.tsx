@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as Tone from 'tone';
 import { useTheme } from '@mui/material';
+import { visualizerStyles } from '../visualizers.styles';
 
 interface WaveformVisualizerProps {
   oscillator: Tone.OmniOscillator<any>;
@@ -16,96 +17,133 @@ export const WaveformVisualizer = ({
   height = 150 
 }: WaveformVisualizerProps) => {
   const theme = useTheme();
+  const colors = visualizerStyles.colors(theme);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyzerRef = useRef<Tone.Analyser | null>(null);
   const animationFrameRef = useRef<number>();
+  const isDisposingRef = useRef(false);
 
   // Create and connect analyzer
   useEffect(() => {
-    // Create new analyzer
-    const analyzer = new Tone.Analyser('waveform', 1024);
-    analyzerRef.current = analyzer;
+    if (isDisposingRef.current) return;
 
-    // Connect to the audio chain
-    gainNode.connect(analyzer);
+    try {
+      // Create new analyzer
+      const analyzer = new Tone.Analyser('waveform', 1024);
+      analyzerRef.current = analyzer;
 
-    return () => {
-      // Cleanup
-      gainNode.disconnect(analyzer);
-      analyzer.dispose();
-      analyzerRef.current = null;
-    };
+      // Safely connect to the audio chain
+      if (gainNode && !gainNode.disposed) {
+        gainNode.connect(analyzer);
+      }
+
+      return () => {
+        isDisposingRef.current = true;
+        // Cleanup
+        if (analyzerRef.current && !analyzerRef.current.disposed) {
+          try {
+            if (gainNode && !gainNode.disposed) {
+              gainNode.disconnect(analyzerRef.current);
+            }
+            analyzerRef.current.dispose();
+          } catch (error) {
+            console.warn('Cleanup warning in WaveformVisualizer:', error);
+          }
+        }
+        analyzerRef.current = null;
+        isDisposingRef.current = false;
+      };
+    } catch (error) {
+      console.error('Error in WaveformVisualizer setup:', error);
+      return () => {
+        isDisposingRef.current = false;
+      };
+    }
   }, [gainNode]);
 
   // Handle visualization
   useEffect(() => {
-    if (!canvasRef.current || !analyzerRef.current) return;
+    if (!canvasRef.current || !analyzerRef.current || isDisposingRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const draw = () => {
-      if (!analyzerRef.current) return;
-
-      const values = analyzerRef.current.getValue() as Float32Array;
-      
-      // Clear canvas
-      ctx.fillStyle = theme.palette.background.paper;
-      ctx.fillRect(0, 0, width, height);
-
-      // Draw grid
-      ctx.strokeStyle = theme.palette.divider;
-      ctx.lineWidth = 1;
-
-      // Vertical grid lines
-      for (let x = 0; x <= width; x += width / 8) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
+      if (!analyzerRef.current || analyzerRef.current.disposed || isDisposingRef.current) {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        return;
       }
 
-      // Horizontal grid lines
-      for (let y = 0; y <= height; y += height / 4) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
+      try {
+        const values = analyzerRef.current.getValue() as Float32Array;
+        
+        // Clear canvas
+        ctx.fillStyle = colors.background;
+        ctx.fillRect(0, 0, width, height);
 
-      // Draw center line
-      ctx.strokeStyle = theme.palette.text.secondary;
-      ctx.beginPath();
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
+        // Draw grid
+        ctx.strokeStyle = colors.grid;
+        ctx.lineWidth = 1;
 
-      // Draw waveform
-      ctx.beginPath();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = theme.palette.primary.main;
-      
-      const sliceWidth = width / values.length;
-      let x = 0;
-
-      for (let i = 0; i < values.length; i++) {
-        const y = (values[i] + 1) / 2 * height;
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
+        // Vertical grid lines
+        for (let x = 0; x <= width; x += width / 8) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
         }
 
-        x += sliceWidth;
+        // Horizontal grid lines
+        for (let y = 0; y <= height; y += height / 4) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+
+        // Draw center line
+        ctx.strokeStyle = colors.text;
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+
+        // Draw waveform
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = colors.waveform;
+        
+        const sliceWidth = width / values.length;
+        let x = 0;
+
+        for (let i = 0; i < values.length; i++) {
+          const y = (values[i] + 1) / 2 * height;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+
+        // Request next frame only if not disposing
+        if (!isDisposingRef.current) {
+          animationFrameRef.current = requestAnimationFrame(draw);
+        }
+      } catch (error) {
+        console.warn('Error in visualization loop:', error);
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
       }
-
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
-
-      // Request next frame
-      animationFrameRef.current = requestAnimationFrame(draw);
     };
 
     // Start animation
@@ -117,7 +155,7 @@ export const WaveformVisualizer = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [width, height, theme]);
+  }, [width, height, colors]);
 
   return (
     <canvas
@@ -125,11 +163,8 @@ export const WaveformVisualizer = ({
       width={width}
       height={height}
       style={{ 
-        width: '100%',
-        height: 'auto',
+        ...visualizerStyles.canvas,
         maxWidth: width,
-        display: 'block',
-        margin: '0 auto'
       }}
     />
   );
